@@ -25,7 +25,7 @@ export default {
 	},
 	setup() {
 		// 可以通过URL参数或其他方式获取文档ID
-		const documentId = ref('demo-doc-1');
+		const documentId = ref('2');
 
 		return {
 			documentId

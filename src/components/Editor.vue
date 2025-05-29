@@ -25,12 +25,14 @@
 
 <script>
 import {onMounted, onUnmounted, ref} from 'vue';
-import Quill from 'quill';
+// import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import * as Y from 'yjs';
-import {WebsocketProvider} from 'y-websocket';
+// import {WebsocketProvider} from 'y-websocket';
+import {SocketIOProvider} from "@/lib/y-socket.io";
 import {QuillBinding} from 'y-quill';
 import {v4 as uuidv4} from 'uuid';
+import FluentEditor from "@opentiny/fluent-editor";
 
 export default {
 	name: 'DocumentEditor',
@@ -44,11 +46,11 @@ export default {
 		// 状态变量
 		const isConnected = ref(false);
 		const activeUsers = ref({});
-		const username = ref('用户' + Math.floor(Math.random() * 1000));
+		const username = ref('User' + Math.floor(Math.random() * 1000));
 		const userId = ref(uuidv4());
 
 		// 存储引用
-		let quillEditor = null;
+		let fluentEditor = null;
 		let yDoc = null;
 		let provider = null;
 		let binding = null;
@@ -60,35 +62,40 @@ export default {
 				theme: 'snow',
 				modules: {
 					toolbar: [
-						['bold', 'italic', 'underline', 'strike'],
-						['blockquote', 'code-block'],
-						[{'header': 1}, {'header': 2}],
-						[{'list': 'ordered'}, {'list': 'bullet'}],
-						[{'script': 'sub'}, {'script': 'super'}],
-						[{'indent': '-1'}, {'indent': '+1'}],
-						[{'direction': 'rtl'}],
-						[{'size': ['small', false, 'large', 'huge']}],
-						[{'header': [1, 2, 3, 4, 5, 6, false]}],
-						[{'color': []}, {'background': []}],
-						[{'font': []}],
-						[{'align': []}],
-						['clean'],
-						['image', 'table']
+						['undo', 'redo', 'clean', 'format-painter'],
+						[
+							// 请保留默认值为 false
+							{header: [1, 2, 3, 4, 5, 6, false]},
+							{font: [false, '仿宋_GB2312, 仿宋', '楷体', '隶书', '黑体', '无效字体, 隶书']},
+							{size: [false, '12px', '14px', '16px', '18px', '20px', '24px', '32px', '36px', '48px', '72px']},
+							{'line-height': [false, '1.2', '1.5', '1.75', '2', '3', '4', '5']},
+						],
+						['bold', 'italic', 'strike', 'underline', 'divider'],
+						[{color: []}, {background: []}],
+						[{align: ''}, {align: 'center'}, {align: 'right'}, {align: 'justify'}],
+						[{list: 'ordered'}, {list: 'bullet'}, {list: 'check'}],
+						[{script: 'sub'}, {script: 'super'}],
+						[{indent: '-1'}, {indent: '+1'}],
+						[{direction: 'rtl'}],
+						['link', 'blockquote', 'code', 'code-block'],
+						['image', 'file'],
+						['emoji', 'video', 'formula', 'screenshot', 'fullscreen'],
+						[{'table-up': []}],
 					]
 				}
 			};
 
-			quillEditor = new Quill('#editor', quillOptions);
+			fluentEditor = new FluentEditor('#editor', quillOptions);
 
 			// 初始化 YJS
 			yDoc = new Y.Doc();
 
 			// 初始化 WebSocket Provider
-			const websocketUrl = `ws://${process.env.VUE_APP_BACKEND_HOST || 'localhost'}:${process.env.VUE_APP_BACKEND_PORT || '8080'}/ws`;
-			provider = new WebsocketProvider(websocketUrl, props.docId, yDoc, {
-				params: {
-					userId: userId.value,
-					username: username.value
+			const websocketUrl = `ws://${process.env.VUE_APP_BACKEND_HOST || 'localhost'}:${process.env.VUE_APP_BACKEND_PORT || '8080'}`;
+			provider = new SocketIOProvider(websocketUrl, props.docId, yDoc, {
+				autoConnect: true,
+				auth: {
+					access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc0ODQ4MzY2NywianRpIjoiYjA5ODQxOTItNmQ3Mi00NzNjLTlhMmYtMDg1NTcyMmUzNjRiIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6IjEiLCJuYmYiOjE3NDg0ODM2NjcsImNzcmYiOiJhNDNkNTljMy0yNDAyLTRmZGMtODViNi1iYzRiMjFiNjcwZTQiLCJleHAiOjE3NDg0ODcyNjd9.WEWhSiAbarT2wtNu1GdxGpuzvdZNn71agunPDmyBqxo'
 				}
 			});
 
@@ -103,7 +110,7 @@ export default {
 				const users = {};
 
 				states.forEach((state, clientId) => {
-					if (state.user) {
+					if (state.user && clientId !== provider.doc.clientID) {
 						users[clientId] = {
 							name: state.user.name,
 							color: state.user.color
@@ -122,7 +129,16 @@ export default {
 
 			// 初始化 Quill Binding
 			const yText = yDoc.getText('quill');
-			binding = new QuillBinding(yText, quillEditor, provider.awareness);
+			binding = new QuillBinding(yText, fluentEditor, provider.awareness);
+
+			// 连接错误处理
+			provider.on('connection-error', (error) => {
+				console.error('Connection error:', error);
+			});
+
+			provider.on('connection-close', (event) => {
+				console.log('Connection closed:', event);
+			});
 		};
 
 		// 生命周期钩子
