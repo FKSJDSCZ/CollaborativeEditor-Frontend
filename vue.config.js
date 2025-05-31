@@ -4,5 +4,8 @@ module.exports = {
 		port: 8081,
 		historyApiFallback: true,
 		allowedHosts: 'all',
+		client: {
+			overlay: false
+		}
 	}
 }
